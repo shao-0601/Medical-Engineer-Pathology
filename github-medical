@@ -1,0 +1,49 @@
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import DataLoader
+import torchvision.models as models
+import medmnist
+from medmnist import INFO
+
+data_flag = 'PathMNIST'
+info = INFO[data_flag]
+DataClass = getattr(medmnist, info['python_class'])
+
+train_dataset = DataClass(split='train', download=True)
+test_dataset = DataClass(split='test', download=True)
+
+train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True)
+test_loader = DataLoader(test_dataset, batch_size=16, shuffle=False)
+
+model = models.resnet18(pretrained=False)
+model.fc = nn.Linear(model.fc.in_features, 9)
+
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+model = model.to(device)
+
+criterion = nn.CrossEntropyLoss()
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+print("开始训练病理切片分类模型")
+for epoch in range(3):
+    model.train()
+    loss_sum = 0
+    for img, label in train_loader:
+        img, label = img.to(device), label.to(device).squeeze().long()
+        out = model(img)
+        loss = criterion(out, label)
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        loss_sum += loss.item()
+    print(f"Epoch {epoch+1}, Loss: {loss_sum/len(train_loader):.3f}")
+
+correct, total = 0, 0
+with torch.no_grad():
+    for img, label in test_loader:
+        img, label = img.to(device), label.to(device).squeeze().long()
+        correct += (model(img).argmax(1) == label).sum().item()
+        total += label.size(0)
+
+print(f"模型准确率: {100*correct/total:.2f}%")
